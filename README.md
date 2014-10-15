@@ -18,20 +18,22 @@ Installing
 
 `gmcadmin` uses [Revel](http://robfig.github.io/revel/) framework and a forked version of `gomemcache`:
 
-    go get -u github.com/robfig/revel/revel
+    go get -u github.com/revel/revel
+    go get -u github.com/revel/cmd/revel
     go get -u github.com/codeb2cc/gomemcache/memcache
 
-Use [Grunt](http://gruntjs.com/) to build the web app. Remember to modify the websocket url and other configs in `public/src/js/app.js` before building.
+Use [Bower](http://bower.io) and  [Grunt](http://gruntjs.com/) to build the web app. Remember to modify the websocket url and other configs in `public/src/js/app.js` before building.
 
     cd $GOPATH/src/github.com/codeb2cc/gmcadmin
     cd public
 
     npm install
+    bower install
     grunt release
 
 All static files go to the `public/dist` folder. The resources url prefix is `/public/`. You can move them somewhere else to be better served by Nginx, etc. Check `conf/routes` for route details.
 
-Before starting the app, you may want to open `conf/app.conf` and modify the memcached address and listening port. Default is `127.0.0.1:11211` and `8000`. Finally,
+Before starting the app, you may want to open `conf/app.conf` and modify the memcached address and listening port. Default is `127.0.0.1:11211` and `8000`. To monitor multiple memcacheds, use `127.0.0.1:11211|192.168.1.1:11211`. Finally,
 
     revel run github.com/codeb2cc/gmcadmin prod
 

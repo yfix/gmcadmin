@@ -3,8 +3,9 @@ package tests
 import (
 	"code.google.com/p/go.net/websocket"
 	"encoding/json"
+	"fmt"
 	"github.com/codeb2cc/gomemcache/memcache"
-	"github.com/robfig/revel"
+	"github.com/revel/revel"
 )
 
 var (
@@ -32,7 +33,7 @@ func (t AppTest) TestCacheGet() {
 	err := mcClient.Set(foo)
 	t.Assert(err == nil)
 
-	t.Get("/cache?key=foo")
+	t.Get(fmt.Sprintf("/cache?key=foo&server=%s", mcServer))
 	t.AssertOk()
 	t.AssertContentType("application/json; charset=utf-8")
 
@@ -48,8 +49,9 @@ func (t AppTest) TestCacheGet() {
 
 func (t AppTest) TestPreallocate() {
 	data := map[string][]string{
-		"size": []string{"1024"},
-		"mem": []string{"1000000"},
+		"server": []string{mcServer},
+		"size":   []string{"1024"},
+		"mem":    []string{"1000000"},
 	}
 
 	t.PostForm("/allocate", data)
@@ -73,7 +75,7 @@ func (t AppTest) TestWebSocket() {
 	ws := t.WebSocket("/ws/socket")
 
 	var r interface{}
-	cmds := []string{"server", "settings", "slabs", "items"}
+	cmds := []string{"server|0", "settings|0", "slabs|0", "items|0"}
 
 	for _, cmd := range cmds {
 		websocket.Message.Send(ws, cmd)

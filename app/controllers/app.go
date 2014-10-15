@@ -2,13 +2,13 @@ package controllers
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
+	"github.com/codeb2cc/gomemcache/memcache"
+	"github.com/revel/revel"
 	"math"
 	"net"
-	"encoding/base64"
 	"unicode/utf8"
-	"github.com/robfig/revel"
-	"github.com/codeb2cc/gomemcache/memcache"
 )
 
 type App struct {
@@ -41,14 +41,21 @@ func parseItem(i *memcache.Item) *CacheItem {
 }
 
 func (c App) Index() revel.Result {
+	c.RenderArgs["serverData"] = mcServers
 	return c.RenderTemplate("index.html")
 }
 
 func (c App) GetCache() revel.Result {
-	var cacheKey string
+	var server, cacheKey string
+	c.Params.Bind(&server, "server")
 	c.Params.Bind(&cacheKey, "key")
 
 	response := Response{"error", nil}
+	mcClient, ok := mcClients[server]
+	if !ok {
+		return c.RenderJson(response)
+	}
+
 	if cacheKey != "" {
 		item, err := mcClient.Get(cacheKey)
 		if err == nil {
@@ -64,33 +71,35 @@ func (c App) GetCache() revel.Result {
 
 type AllocationResult struct {
 	DataSize uint64
-	SlabId int
+	SlabId   int
 	SlabSize uint64
-	SlabNum uint64
+	SlabNum  uint64
 	PageSize uint64
-	PageNum uint64
+	PageNum  uint64
 	Malloced uint64
 }
 
 func (c App) AllocateSlab() revel.Result {
+	var server string
 	var dataSize, memSize uint64
+	c.Params.Bind(&server, "server")
 	c.Params.Bind(&dataSize, "size")
 	c.Params.Bind(&memSize, "mem")
 
 	response := Response{"error", nil}
-	if (dataSize == 0 || memSize == 0) {
+	mcClient, ok := mcClients[server]
+	if !ok || dataSize == 0 || memSize == 0 {
 		return c.RenderJson(response)
 	}
 
 	// Validate execution
-	addr, err := net.ResolveTCPAddr("tcp", mcServer)
+	addr, err := net.ResolveTCPAddr("tcp", server)
 	stats, err := mcClient.StatsSettings(addr)
 	if err != nil {
 		revel.WARN.Print(err)
 		return c.RenderJson(response)
 	}
 	if dataSize > stats.ItemSizeMax || memSize > stats.Maxbytes {
-		response.Status = "invalid"
 		return c.RenderJson(response)
 	}
 
@@ -101,7 +110,7 @@ func (c App) AllocateSlab() revel.Result {
 	for r.SlabSize < itemSize {
 		r.SlabSize = uint64(math.Ceil(float64(r.SlabSize) * stats.GrowthFactor))
 		r.SlabId += 1
-		if r.SlabSize % 8 != 0 {
+		if r.SlabSize%8 != 0 {
 			r.SlabSize += 8 - (r.SlabSize % 8) // Always 8-bytes aligned
 		}
 	}
@@ -109,7 +118,7 @@ func (c App) AllocateSlab() revel.Result {
 	if r.PageSize == 0 {
 		r.PageSize = stats.ItemSizeMax
 	}
-	r.PageNum = uint64(math.Max(float64(memSize / r.PageSize), 1))
+	r.PageNum = uint64(math.Max(float64(memSize/r.PageSize), 1))
 	r.SlabNum = r.PageNum * (stats.ItemSizeMax / r.SlabSize)
 	r.Malloced = r.PageSize * r.PageNum
 

@@ -4,11 +4,27 @@
 
 angular.module('gmcadmin.controllers', [])
 .controller('NavCtrl', [
-  '$scope'
+  '$route'
+, '$scope'
 , '$location'
-, function ($scope, $location) {
+, 'configManager'
+, function ($route, $scope, $location, configManager) {
+    $scope.servers = window._S
+    $scope.activeServer = window._S[0]
+
+    configManager.serverIndex = 0
+    configManager.server = $scope.activeServer
+
     $scope.navClass = function (nav) {
       return $location.path() === nav ? 'active' : ''
+    }
+
+    $scope.changeServer = function (idx) {
+      $scope.activeServer = $scope.servers[idx]
+      configManager.serverIndex = idx
+      configManager.server = $scope.activeServer
+
+      $route.reload()
     }
   }
 ])
@@ -18,7 +34,8 @@ angular.module('gmcadmin.controllers', [])
 , '$timeout'
 , '$location'
 , 'socketClient'
-, function (CONF, $scope, $timeout, $location, socketClient) {
+, 'configManager'
+, function (CONF, $scope, $timeout, $location, socketClient, configManager) {
     $scope.serverStats = null
     $scope.settingsStats = null
     $scope.slabsStats = null
@@ -54,9 +71,9 @@ angular.module('gmcadmin.controllers', [])
 
     $scope.update = function () {
       NProgress.start()
-      socketClient.send('server')
-      socketClient.send('settings')
-      socketClient.send('slabs')
+      socketClient.send('server|' + configManager.serverIndex)
+      socketClient.send('settings|' + configManager.serverIndex)
+      socketClient.send('slabs|' + configManager.serverIndex)
     }
 
     $scope.$on('$routeChangeStart', function () {
@@ -77,13 +94,15 @@ angular.module('gmcadmin.controllers', [])
 , '$timeout'
 , '$location'
 , 'socketClient'
-, function (CONF, $scope, $timeout, $location, socketClient) {
+, 'configManager'
+, function (CONF, $scope, $timeout, $location, socketClient, configManager) {
     $scope.slabsStats = null
     $scope.itemsStats = null
     $scope.slabIndex = null
+    $scope.slabId = null
 
     $scope.slabHeaders = [
-      ['Index', '#']
+      ['Id', '#']
     , ['ChunkSize', 'Chunk Size']
     , ['UsedChunks', 'Used Chunks']
     , ['FreeChunks', 'Free Chunks']
@@ -93,7 +112,7 @@ angular.module('gmcadmin.controllers', [])
     , ['MemRequested', 'Requested']
     ]
 
-    $scope.slabOrder = 'Index'
+    $scope.slabOrder = 'Id'
     $scope.slabReverse = false
 
     if (!Modernizr.websockets) {
@@ -109,16 +128,18 @@ angular.module('gmcadmin.controllers', [])
             var slab = null
             for (var k in data.Data) {
               slab = data.Data[k]
-              slab.Index = parseInt(k, 10)
+              slab.Id = parseInt(k, 10)
               slab.Malloced = slab.TotalChunks * slab.ChunkSize
               slab.Wasted = (!slab.MemRequested || slab.Malloced < slab.MemRequested) ? ((slab.TotalChunks - slab.UsedChunks) * slab.ChunkSize) : (slab.Malloced - slab.MemRequested)
             }
             $scope.slabsStats = []
-            $scope.slabIndex = 0
             angular.forEach(data.Data, function (val, key) {
               // Convert to array for sorting
+              val.Index = $scope.slabsStats.length
               $scope.slabsStats.push(val)
             })
+            $scope.slabIndex = 0
+            $scope.slabId = $scope.slabsStats[0].Id
             break
           case 'items':
             $scope.itemsStats = data.Data
@@ -143,12 +164,13 @@ angular.module('gmcadmin.controllers', [])
 
     $scope.update = function () {
       NProgress.start()
-      socketClient.send('slabs')
-      socketClient.send('items')
+      socketClient.send('slabs|' + configManager.serverIndex)
+      socketClient.send('items|' + configManager.serverIndex)
     }
 
     $scope.activeSlab = function (evt, index) {
       $scope.slabIndex = index
+      $scope.slabId = $scope.slabsStats[index].Id
     }
 
     $scope.$on('$routeChangeStart', function () {
@@ -169,7 +191,8 @@ angular.module('gmcadmin.controllers', [])
 , '$timeout'
 , '$location'
 , 'socketClient'
-, function (CONF, $scope, $timeout, $location, socketClient) {
+, 'configManager'
+, function (CONF, $scope, $timeout, $location, socketClient, configManager) {
     $scope.serverStats = null
     $scope.slabsStats = null
 
@@ -182,7 +205,7 @@ angular.module('gmcadmin.controllers', [])
       chartType: 'areaspline'
     , plotOptions: { areaspline: { stacking: null } }
     , colors: ['#4968AB', '#C84D64']
-    , dataLabels: ['Used', 'Wasted']
+    , dataLabels: ['Malloced', 'Wasted']
     , maxLength: 30
     , unit: ' MB'
     , watch: 'memStatsData'
@@ -350,7 +373,7 @@ angular.module('gmcadmin.controllers', [])
               wastedMem += slab.Wasted
             }
             $scope.slabsStats = data.Data
-            $scope.memStatsData = [unitResize(wastedMem, 'M'), unitResize(mallocedMem, 'M')]
+            $scope.memStatsData = [unitResize(mallocedMem, 'M'), unitResize(wastedMem, 'M')]
             break
         }
       })
@@ -364,8 +387,8 @@ angular.module('gmcadmin.controllers', [])
 
     $scope.update = function () {
       NProgress.start()
-      socketClient.send('server')
-      socketClient.send('slabs')
+      socketClient.send('server|' + configManager.serverIndex)
+      socketClient.send('slabs|' + configManager.serverIndex)
     }
 
     $scope.$on('$routeChangeStart', function () {
@@ -385,7 +408,8 @@ angular.module('gmcadmin.controllers', [])
 , '$scope'
 , '$timeout'
 , '$http'
-, function (CONF, $scope, $timeout, $http) {
+, 'configManager'
+, function (CONF, $scope, $timeout, $http, configManager) {
     NProgress.done()
 
     $scope.queryKey = ''
@@ -424,7 +448,7 @@ angular.module('gmcadmin.controllers', [])
     $scope.cacheGet = function () {
       if (this.queryKey) {
         NProgress.start()
-        $http({ method: 'GET', url: '/cache?key=' + encodeURIComponent(this.queryKey) })
+        $http({ method: 'GET', url: '/cache?server=' + configManager.server + '&key=' + encodeURIComponent(this.queryKey) })
           .success(function (data, status, headers, config) {
             NProgress.done()
             if (status === 200 && data.Status === 'success') {
@@ -445,7 +469,7 @@ angular.module('gmcadmin.controllers', [])
         $http({
           method: 'POST'
         , url: '/allocate'
-        , data: 'size=' + encodeURIComponent(this.allocateSize) + '&mem=' + encodeURIComponent(this.allocateMem)
+        , data: 'server=' + configManager.server + '&size=' + encodeURIComponent(this.allocateSize) + '&mem=' + encodeURIComponent(this.allocateMem)
         , headers : {'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'}
         })
           .success(function (data, status, headers, config) {
@@ -513,7 +537,8 @@ angular.module('gmcadmin.controllers', [])
   'CONF'
 , '$scope'
 , '$location'
-, function (CONF, $scope, $location) {
+, 'configManager'
+, function (CONF, $scope, $location, configManager) {
     NProgress.remove()
 
     if (!Modernizr.websockets) {
